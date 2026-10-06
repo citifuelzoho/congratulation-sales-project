@@ -57,21 +57,8 @@
   @media (max-width:700px){.card{width:92vw}}
 
   #hint{position:fixed;right:2vw;bottom:2vh;z-index:4;color:var(--muted);font-size:14px}
-  #panel{position:fixed;left:50%;bottom:calc(9vh + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:4;
-         display:flex;gap:10px;flex-wrap:wrap;justify-content:center;background:var(--ink-2);padding:12px;border-radius:14px;max-width:94vw}
-  #panel input{font:inherit;font-size:18px;padding:12px 14px;border-radius:8px;border:2px solid transparent;
-         background:var(--ink);color:var(--paper);width:min(240px,80vw)}
-  #panel input:focus{outline:none;border-color:var(--gold)}
-  #panel button{font:inherit;font-weight:800;font-size:18px;padding:12px 26px;border:0;border-radius:8px;
-         background:var(--gold);color:var(--ink);cursor:pointer}
-  #panel button.ghost{background:transparent;color:var(--paper);border:2px solid var(--muted);font-weight:600}
-  #panel button.ghost:hover{background:var(--ink)}
-  #vidnote{flex-basis:100%;text-align:center;color:var(--muted);font-size:14px}
-  #panel button:hover{background:#ffc95c}
-  #panel button:focus-visible{outline:3px solid var(--paper);outline-offset:3px}
-  body.celebrating #panel,body.celebrating #hint{display:none}
+  body.celebrating #hint{display:none}
   body.celebrating.sound-blocked #hint{display:block;color:var(--paper)}
-  #idle{padding-bottom:calc(5vh + 90px)}
   #status{position:fixed;left:2vw;bottom:2vh;z-index:4;font-size:14px;color:var(--coral)}
 </style>
 </head>
@@ -93,15 +80,6 @@
 </section>
 
 <canvas id="fx"></canvas>
-<form id="panel" autocomplete="off">
-  <input id="inName" placeholder="Closer's name" aria-label="Closer's name" required>
-  <input id="inAmount" placeholder="Amount, e.g. 2406" aria-label="Deal amount" inputmode="decimal">
-  <input id="inDeal" placeholder="Client (optional)" aria-label="Client">
-  <button type="submit">Show celebration</button>
-  <button type="button" class="ghost" id="pickVid">Choose video</button>
-  <input type="file" id="vidFile" accept="video/*" hidden>
-  <div id="vidnote">No video chosen yet. The celebration plays on a plain background.</div>
-</form>
 <div id="hint">Click once to turn on sound · press F for full screen</div>
 <div id="status"></div>
 
@@ -144,21 +122,11 @@ function next(){
   setTimeout(()=>{ stopVideo(); p.classList.remove("on"); document.body.classList.remove("celebrating"); showing=false; history.unshift(w); renderBoard(history); next(); }, ms);
 }
 
-/* Live connection to the server */
-$("panel").addEventListener("submit", e => {
-  e.preventDefault();
-  audio = audio || new AudioContext();
-  const name = $("inName").value.trim(); if(!name) return;
-  queue.push({ name, amount: $("inAmount").value.replace(/[^0-9.]/g,""), deal: $("inDeal").value.trim(), at: Date.now() });
-  $("inName").value = ""; $("inAmount").value = ""; $("inDeal").value = "";
-  next();
-});
-
 /* Background video */
 let videoReady = false;
-function useVideo(src, label){
+function useVideo(src){
   const v = $("bg");
-  v.onloadedmetadata = () => { videoReady = true; $("vidnote").textContent = label; };
+  v.onloadedmetadata = () => { videoReady = true; };
   v.onerror = () => { videoReady = false; };
   v.src = src; v.load();
 }
@@ -171,41 +139,9 @@ function stopVideo(){
 }
 $("bg").addEventListener("play", () => { if (!showing) stopVideo(); });
 // On the self-hosted server, video/congratulations.mp4 is used automatically.
-if (location.protocol.startsWith("http")) useVideo("video/congratulations.mp4", "Video: congratulations.mp4");
+if (location.protocol.startsWith("http")) useVideo("video/congratulations.mp4");
 
-let assets = null, db = null;
-(async () => {
-  if (!window.claude || !claude.use) return;
-  [assets, db] = await Promise.all([claude.use("assets"), claude.use("db")]);
-  if (db) {
-    try {
-      const snap = await db.doc("settings/video").get();
-      if (snap.exists && snap.data().id) useVideo("/_blob/" + snap.data().id, "Video: " + (snap.data().name || "saved video"));
-    } catch {}
-  }
-})();
-
-$("pickVid").addEventListener("click", () => $("vidFile").click());
-$("vidFile").addEventListener("change", async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  audio = audio || new AudioContext();
-  if (assets && db) {
-    $("vidnote").textContent = "Uploading " + f.name + "…";
-    try {
-      const up = await assets.upload(f);
-      await db.doc("settings/video").set({ id: up.id, name: f.name });
-      useVideo(up.url, "Video: " + f.name + " (saved for every screen)");
-      return;
-    } catch (err) {
-      $("vidnote").textContent = (err && err.code === "too_large") || f.size > 20*1024*1024
-        ? "That video is over 20 MB. Choose a shorter or compressed one."
-        : "Couldn't save the video (" + (err && err.code || "error") + "). Using it on this screen only.";
-    }
-  }
-  useVideo(URL.createObjectURL(f), "Video: " + f.name + " (this screen only, until reload)");
-  e.target.value = "";
-});
-
+/* Live connection to the server */
 let wasConnected = false;
 function connect(){
   if (location.protocol === "file:") return;
