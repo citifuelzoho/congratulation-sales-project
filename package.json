@@ -1,0 +1,12 @@
+{
+  "name": "sales-celebration",
+  "version": "1.0.0",
+  "description": "Full-screen celebration on the sales monitor when a deal is won in the CRM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "private": true
+}

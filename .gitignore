@@ -1,0 +1,5 @@
+node_modules/
+.env
+public/celebration.mp4
+server.log
+server.pid
