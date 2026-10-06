@@ -70,6 +70,7 @@
   #panel button:hover{background:#ffc95c}
   #panel button:focus-visible{outline:3px solid var(--paper);outline-offset:3px}
   body.celebrating #panel,body.celebrating #hint{display:none}
+  body.celebrating.sound-blocked #hint{display:block;color:var(--paper)}
   #idle{padding-bottom:calc(5vh + 90px)}
   #status{position:fixed;left:2vw;bottom:2vh;z-index:4;font-size:14px;color:var(--coral)}
 </style>
@@ -136,7 +137,7 @@ function next(){
   if (videoReady) {
     const v = $("bg"); p.classList.add("has-video");
     v.currentTime = 0; v.muted = false;
-    v.play().catch(() => { v.muted = true; v.play().catch(()=>{}); });
+    v.play().catch(() => { v.muted = true; soundBlocked(); v.play().catch(()=>{}); });
     if (isFinite(v.duration) && v.duration > 3) ms = Math.min(v.duration, 60) * 1000;
   } else { p.classList.remove("has-video"); chime(); }
   startMoney(ms);
@@ -217,7 +218,19 @@ function connect(){
 connect();
 
 /* Sound: a short bell arpeggio (browsers need one click first) */
-document.addEventListener("click", () => { audio = audio || new AudioContext(); $("hint").textContent = "Sound on · press F for full screen"; });
+function soundBlocked(){
+  document.body.classList.add("sound-blocked");
+  $("hint").textContent = "Sound is blocked · click once to turn it on";
+}
+document.addEventListener("click", () => {
+  audio = audio || new AudioContext();
+  if (audio.state === "suspended") audio.resume().catch(()=>{});
+  document.body.classList.remove("sound-blocked");
+  $("hint").textContent = "Sound on · press F for full screen";
+  // A celebration that started muted gets its sound back straight away.
+  const v = $("bg");
+  if (showing && videoReady && v.muted) { v.muted = false; v.play().catch(() => { v.muted = true; soundBlocked(); v.play().catch(()=>{}); }); }
+});
 function chime(){
   if(!audio) return;
   [523,659,784,1047].forEach((f,i)=>{
