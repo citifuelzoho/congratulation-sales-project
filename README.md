@@ -14,6 +14,7 @@ sales-celebration/
 ├── start.bat          Double-click to run on Windows
 ├── start.sh           Run on Mac / Linux
 ├── deploy.sh          Install and run as a service on a Linux server
+├── ecosystem.config.js  Run under PM2
 └── Dockerfile         Run on a server or cloud host
 ```
 
@@ -57,6 +58,15 @@ Copy this folder to the server (e.g. `scp -r sales-celebration user@SERVER:~`), 
 sh deploy.sh
 ```
 It installs Node.js 20 if needed, runs the app as the `sales-celebration` systemd service (restarts on crash and reboot), opens the port in ufw/firewalld, and prints the display and webhook URLs. Run it again after every update.
+
+## Run with PM2
+```
+npm install -g pm2
+pm2 start ecosystem.config.js
+pm2 save && pm2 startup     # start again after a reboot (run the command it prints)
+```
+Logs: `pm2 logs sales-celebration`. After an update or a change in `.env`: `pm2 restart sales-celebration`.
+Use PM2 **or** `deploy.sh`, not both: two copies cannot share the same port.
 
 ## Run with Docker
 ```
