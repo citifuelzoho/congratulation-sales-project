@@ -13,8 +13,8 @@ sales-celebration/
 ├── package.json
 ├── start.bat          Double-click to run on Windows
 ├── start.sh           Run on Mac / Linux
-├── deploy.sh          Install and run as a service on a Linux server
-├── ecosystem.config.js  Run under PM2
+├── deploy.sh          Install and run under PM2 on a Linux server
+├── ecosystem.config.js  PM2 process file used by deploy.sh
 └── Dockerfile         Run on a server or cloud host
 ```
 
@@ -59,16 +59,11 @@ Copy this folder to the server (e.g. `scp -r sales-celebration user@SERVER:~`), 
 ```
 sh deploy.sh
 ```
-It installs Node.js 20 if needed, runs the app as the `sales-celebration` systemd service (restarts on crash and reboot), opens the port in ufw/firewalld, and prints the display and webhook URLs. Run it again after every update.
+It installs Node.js 20 and PM2 if needed, runs the app under PM2 as `sales-celebration` using `ecosystem.config.js` (restarts on crash and reboot), opens the port in ufw/firewalld, and prints the display and webhook URLs. Run it again after every update or change in `.env`.
 
-## Run with PM2
-```
-npm install -g pm2
-pm2 start ecosystem.config.js
-pm2 save && pm2 startup     # start again after a reboot (run the command it prints)
-```
-Logs: `pm2 logs sales-celebration`. After an update or a change in `.env`: `pm2 restart sales-celebration`.
-Use PM2 **or** `deploy.sh`, not both: two copies cannot share the same port.
+Logs: `pm2 logs sales-celebration`. Status: `pm2 status`. Restart: `pm2 restart sales-celebration`.
+
+To start it by hand instead: `npm install -g pm2 && pm2 start ecosystem.config.js`.
 
 ## Run with Docker
 ```

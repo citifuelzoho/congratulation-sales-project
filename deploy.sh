@@ -1,12 +1,11 @@
 #!/bin/sh
 # Deploy on a Linux server: run `sh deploy.sh` from this folder (again after every update).
-# Installs Node.js if missing, runs server.js as a service that restarts on crash and reboot,
+# Installs Node.js and PM2 if missing, runs server.js under PM2 (restarts on crash and reboot),
 # opens the port in the firewall and checks that the server answers.
 set -eu
 
 APP=sales-celebration
 cd "$(dirname "$0")"
-DIR=$(pwd)
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -51,44 +50,38 @@ fi
 NODE=$(command -v node)
 say "Using Node.js $(node -v) at $NODE"
 
-# 3. Run as a service
-stop_background() {
-  if [ -f server.pid ] && kill -0 "$(cat server.pid)" 2>/dev/null; then
-    kill "$(cat server.pid)" && sleep 1
-  fi
+# 3. Run under PM2
+if ! command -v pm2 >/dev/null 2>&1; then
+  say "Installing PM2"
+  npm install -g pm2 >/dev/null 2>&1 || {
+    [ "$SUDO" = "none" ] && die "Could not install PM2 and there is no sudo. Run 'npm install -g pm2' and run again."
+    $SUDO npm install -g pm2
+  }
+  command -v pm2 >/dev/null 2>&1 || die "PM2 install failed."
+fi
+PM2=$(command -v pm2)
+
+# Copies started by older versions of this script would hold the port.
+if [ -f server.pid ]; then
+  kill "$(cat server.pid)" 2>/dev/null && sleep 1 || true
   rm -f server.pid
-}
-
-if [ "$SUDO" != "none" ] && [ -d /run/systemd/system ]; then
-  say "Installing systemd service '$APP'"
-  stop_background   # an older 'nohup' copy would hold the port
-  $SUDO tee /etc/systemd/system/$APP.service >/dev/null <<EOF
-[Unit]
-Description=Sales celebration display
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=$(id -un)
-WorkingDirectory=$DIR
-ExecStart=$NODE $DIR/server.js
-Restart=always
-RestartSec=3
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
+fi
+if [ "$SUDO" != "none" ] && [ -f /etc/systemd/system/$APP.service ]; then
+  say "Removing the old systemd service '$APP' (PM2 runs the app now)"
+  $SUDO systemctl disable --now $APP >/dev/null 2>&1 || true
+  $SUDO rm -f /etc/systemd/system/$APP.service
   $SUDO systemctl daemon-reload
-  $SUDO systemctl enable $APP >/dev/null 2>&1
-  $SUDO systemctl restart $APP
-  MODE=systemd
-else
-  say "No systemd or sudo: running in the background with nohup (will not survive a reboot)"
-  stop_background
-  nohup "$NODE" server.js >> server.log 2>&1 &
-  echo $! > server.pid
-  MODE=nohup
+fi
+
+say "Starting '$APP' with PM2"
+"$PM2" startOrRestart ecosystem.config.js --update-env
+"$PM2" save >/dev/null
+
+# Bring PM2 (and the saved app) back after a reboot.
+if [ "$SUDO" = "none" ]; then
+  echo "No sudo: the app will not start again after a reboot. Run 'pm2 startup' as root to fix that."
+elif ! $SUDO env PATH="$PATH" "$PM2" startup -u "$(id -un)" --hp "$HOME" >/dev/null 2>&1; then
+  echo "Could not enable start on boot. Run 'pm2 startup' and the command it prints."
 fi
 
 # 4. Firewall
@@ -109,27 +102,19 @@ i=0
 until curl -fsS -o /dev/null "http://localhost:$PORT/" 2>/dev/null; do
   i=$((i + 1))
   if [ $i -ge 10 ]; then
-    if [ "$MODE" = systemd ]; then $SUDO journalctl -u $APP -n 30 --no-pager || true
-    else tail -n 30 server.log || true; fi
+    "$PM2" logs $APP --lines 30 --nostream || true
     die "Server did not start on port $PORT (log above)."
   fi
   sleep 1
 done
-if [ "$MODE" = systemd ]; then
-  $SUDO systemctl is-active --quiet $APP || die "Service '$APP' is not running."
-else
-  kill -0 "$(cat server.pid)" 2>/dev/null || die "Server exited; another program may be using port $PORT. See server.log."
-fi
+PID=$("$PM2" pid $APP 2>/dev/null || true)
+case "$PID" in ""|0) die "'$APP' is not running under PM2; another program may be using port $PORT. See 'pm2 logs $APP'.";; esac
 
 IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
 IP=${IP:-YOUR-SERVER-IP}
 say "Deployed"
 echo "  Display:  http://$IP:$PORT/"
 echo "  Webhook:  POST http://$IP:$PORT/webhook?secret=$SECRET"
-if [ "$MODE" = systemd ]; then
-  echo "  Logs:     sudo journalctl -u $APP -f"
-  echo "  Restart:  sudo systemctl restart $APP"
-else
-  echo "  Logs:     tail -f $DIR/server.log"
-  echo "  Stop:     kill \$(cat $DIR/server.pid)"
-fi
+echo "  Logs:     pm2 logs $APP"
+echo "  Restart:  pm2 restart $APP"
+echo "  Status:   pm2 status"
