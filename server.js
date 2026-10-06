@@ -28,33 +28,61 @@ function broadcast(win) {
 }
 
 // Pull the useful fields out of whatever shape the CRM sends.
-function pick(obj, keys) {
+// Keys are compared without case, spaces or punctuation: "Deal Owner", "deal_owner" and "dealOwner" are the same.
+const norm = (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+// Every field at any depth (HubSpot "properties", Zoho nested records, arrays), keyed by its normalised name.
+function flatten(obj, out = {}, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 6) return out;
+  for (const [k, v] of Object.entries(obj)) {
+    const key = norm(k);
+    if (key && !(key in out) && v != null && v !== "") out[key] = v;
+    flatten(v, out, depth + 1);
+  }
+  return out;
+}
+// A field can be plain text, {value}, or a person object like Zoho's Owner {name, id}.
+function text(v) {
+  if (v == null) return "";
+  if (Array.isArray(v)) return text(v[0]);
+  if (typeof v === "object") {
+    return text(v.name || v.full_name || v.fullName ||
+      [v.firstName || v.first_name, v.lastName || v.last_name].filter(Boolean).join(" ") || v.value);
+  }
+  const s = String(v).trim();
+  return /^\$\{.*\}$/.test(s) ? "" : s;   // a merge tag the CRM did not fill in
+}
+function pick(flat, keys) {
   for (const k of keys) {
-    const v = k.split(".").reduce((o, p) => (o == null ? o : o[p]), obj);
-    if (v != null && v !== "") return typeof v === "object" ? v.name || v.value || "" : String(v);
+    const s = text(flat[k]);
+    if (s) return s;
   }
   return "";
 }
 async function toWin(body) {
-  // HubSpot workflow webhooks may wrap fields in "properties": {field: {value}}
-  const flat = { ...body, ...(body.properties || {}) };
-  for (const k in flat) if (flat[k] && typeof flat[k] === "object" && "value" in flat[k]) flat[k] = flat[k].value;
+  const flat = flatten(body);
+  const top = {};   // "name" is only trusted at the top level; nested it could be the deal's or the company's
+  for (const k in body) if (!(norm(k) in top)) top[norm(k)] = body[k];
 
-  let name = pick(flat, ["closer_name", "closer", "name", "deal_owner", "Deal_Owner", "owner_name", "Owner", "owner"]);
-  const ownerId = pick(flat, ["hubspot_owner_id"]);
-  if (!name && ownerId && HUBSPOT_TOKEN) {
-    try {
+  let name = pick(flat, ["closername", "closer", "dealowner", "dealownername", "ownername", "ownerfullname", "owner",
+    "salesrep", "salesperson", "responsible", "assignedto"]) || pick(top, ["name"]);
+  const ownerId = pick(flat, ["hubspotownerid"]);
+  if (!name && ownerId) {
+    if (!HUBSPOT_TOKEN) console.error("Got hubspot_owner_id but HUBSPOT_TOKEN is not set in .env, so the owner's name is unknown");
+    else try {
       const r = await fetch(`https://api.hubapi.com/crm/v3/owners/${ownerId}`, {
         headers: { Authorization: `Bearer ${HUBSPOT_TOKEN}` },
       });
       const o = await r.json();
-      name = [o.firstName, o.lastName].filter(Boolean).join(" ");
+      if (!r.ok) throw new Error(`${r.status} ${o.message || ""}`);
+      name = [o.firstName, o.lastName].filter(Boolean).join(" ") || o.email || "";
     } catch (e) { console.error("HubSpot owner lookup failed:", e.message); }
   }
+  // Show what the CRM actually sent, so the right field can be mapped
+  if (!name) console.error("No closer name in webhook, showing \"Team\". Payload:", JSON.stringify({ ...body, secret: undefined }));
   return {
     name: name || "Team",
-    deal: pick(flat, ["deal_name", "dealname", "Deal_Name", "account", "company"]),
-    amount: pick(flat, ["amount", "Amount"]),
+    deal: pick(flat, ["dealname", "deal", "account", "accountname", "company"]),
+    amount: pick(flat, ["amount", "dealamount"]),
     at: Date.now(),
   };
 }

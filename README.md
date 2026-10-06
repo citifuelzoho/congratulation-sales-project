@@ -43,7 +43,9 @@ The CRM must reach the server over the internet: run it on a cloud server (Docke
 
 Webhook URL (POST): `https://verification-process.tech/webhook?secret=YOUR_SECRET`
 
-Fields read: closer name from `closer_name`, `deal_owner`, `owner_name`, `Owner` or `owner`; plus optional `amount` and `deal_name`.
+Fields read: closer name from `closer_name`, `deal_owner`, `owner_name`, `Owner` or `owner`; plus optional `amount` and `deal_name`. Case, spaces and underscores don't matter (`Deal Owner` = `deal_owner` = `dealOwner`), and nested fields are found too.
+
+If the screen shows **Team**, no name field was recognised: the server log (`pm2 logs sales-celebration`) prints the payload the CRM sent, so you can see which field to map.
 
 **Zoho CRM** — Setup → Automation → Workflow Rules → module *Deals*, when *Stage* is *Closed Won* → action *Webhook*, method POST, the URL above, parameters:
 `closer_name = ${Deals.Deal Owner}`, `amount = ${Deals.Amount}`, `deal_name = ${Deals.Deal Name}`
