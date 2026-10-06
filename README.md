@@ -41,7 +41,7 @@ Put an `.mp4` at `public/video/congratulations.mp4`. It plays behind the card on
 ## 6. Connect the CRM
 The CRM must reach the server over the internet: run it on a cloud server (Dockerfile included), or for a trial expose your PC with `ngrok http 3000` or Cloudflare Tunnel.
 
-Webhook URL (POST): `https://YOUR-ADDRESS/webhook?secret=YOUR_SECRET`
+Webhook URL (POST): `https://verification-process.tech/webhook?secret=YOUR_SECRET`
 
 Fields read: closer name from `closer_name`, `deal_owner`, `owner_name`, `Owner` or `owner`; plus optional `amount` and `deal_name`.
 
