@@ -120,7 +120,7 @@ function next(){
   const w = queue.shift();
   $("pname").textContent = w.name;
   $("pamount").textContent = money(w.amount);
-  $("pdeal").textContent = w.deal ? "Contract completed with " + w.deal : "Contract completed";
+  $("pdeal").textContent = w.deal ? "Contract completed with " + w.deal : "signed a contract";
   document.body.classList.add("celebrating");
   const p = $("party"); p.classList.remove("on"); void p.offsetWidth; p.classList.add("on");
   fitName();
